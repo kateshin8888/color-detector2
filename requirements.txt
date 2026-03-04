@@ -1,0 +1,5 @@
+streamlit>=1.51.0
+opencv-python-headless>=4.12.0
+numpy>=2.2.0
+Pillow>=12.0.0
+streamlit-cropper>=0.3.1
