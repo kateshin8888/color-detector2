@@ -34,52 +34,45 @@ st.set_page_config(page_title="SalivADetector", layout="centered")
 st.title("SalivADetector")
 st.caption("Lactoferrin concentration analysis · Alzheimer's screening POCT")
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("Advanced settings")
-    with st.expander("Analysis parameters", expanded=False):
-        summary    = st.selectbox("Hue summary", ["median", "trimmed_mean", "circular_mean"])
-        roi_shrink = st.slider("ROI shrink", 0.60, 1.00, 0.90, 0.01)
-        s_min      = st.slider("S min", 0, 255, 20)
-        v_min      = st.slider("V min", 0, 255, 40)
-        v_max      = st.slider("V max", 0, 255, 240)
-    with st.expander("Highlight removal", expanded=False):
-        highlight_s_max = st.slider("Highlight S max", 0, 255, 60)
-        highlight_v_min = st.slider("Highlight V min", 0, 255, 220)
-    with st.expander("Device calibration", expanded=False):
-        st.caption(
-            "The calibration curve was measured in a well plate. "
-            "If your POCT device gives systematically different hue readings, "
-            "set an offset here to correct for it."
-        )
-        if "hue_offset" not in st.session_state:
-            st.session_state.hue_offset = 0.0
-        st.slider("Hue offset (°)", -30.0, 30.0, step=0.5, key="hue_offset")
-        st.caption(
-            f"Applied: **{st.session_state.hue_offset:+.1f}°**  "
-            "(positive = device reads lower than well plate)"
-        )
-        st.divider()
-        st.markdown("**One-point calibration**")
-        st.caption(
-            "Photograph a sample of *known* concentration in the POCT device, "
-            "press Analyze, then enter the true concentration below and click **Set offset**."
-        )
-        known_cal_conc = st.number_input(
-            "Known concentration (µg/mL)", min_value=0.001, value=7.43,
-            format="%.3f", key="known_cal_conc",
-        )
-        col_cal, col_rst = st.columns(2)
-        if col_cal.button("Set offset", use_container_width=True):
-            if st.session_state.get("last_raw_hue") is not None:
-                expected = CAL_M * float(np.log(known_cal_conc)) + CAL_B
-                st.session_state.hue_offset = float(expected - st.session_state.last_raw_hue)
-                st.rerun()
-            else:
-                st.warning("Analyze a sample first, then set the offset.")
-        if col_rst.button("Reset to 0", use_container_width=True):
-            st.session_state.hue_offset = 0.0
-            st.rerun()
+with st.expander("How to use this app", expanded=False):
+    st.markdown("""
+**SalivADetector** reads the colour of a saliva lactoferrin assay and estimates lactoferrin
+concentration as a screening indicator for Alzheimer's disease risk.
+
+Wait for the assay to fully develop before taking the photo — photographing too early will give an inaccurate reading.
+
+---
+
+#### Getting a good photo
+
+Colour accuracy is everything here, so lighting and angle matter more than they might seem.
+
+- **Natural daylight or a bright indoor lamp** works well. Avoid dim rooms.
+- **No flash.** Flash blows out the colour patches and skews the reading significantly.
+- **Hold the camera directly above** the device, front face flat — think of it like scanning a document. Even a slight tilt can shift the detected hue.
+- **Plain white or light grey surface** underneath the device. A coloured tablecloth can cast tints onto the window.
+- **Keep both the sample window and the colour sticker in frame** — the app uses the sticker to compensate for your lighting conditions.
+- Steady hands or resting your elbow helps. Motion blur reduces colour precision.
+
+---
+
+#### Steps
+1. Upload the photo
+2. Check that the detection boxes landed in the right place (green = sample window, cyan = colour sticker)
+3. Hit Analyze
+""")
+st.divider()
+
+# ── Hardcoded settings (sidebar hidden) ───────────────────────────────────────
+summary         = "median"
+roi_shrink      = 0.90
+s_min           = 20
+v_min           = 40
+v_max           = 240
+highlight_s_max = 60
+highlight_v_min = 220
+if "hue_offset" not in st.session_state:
+    st.session_state.hue_offset = 0.0
 
 cfg = AnalyzeConfig(
     summary=summary,
@@ -93,15 +86,15 @@ cfg = AnalyzeConfig(
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — Upload
 # ══════════════════════════════════════════════════════════════════════════════
-st.divider()
-st.markdown("###  Step 1 — Upload photo")
+st.markdown("### 📷  Step 1 — Upload photo")
+st.caption("Bright lighting, camera directly above, no flash. Both the sample window and colour sticker should be in frame.")
 
 uploaded = st.file_uploader(
-    "Photo of the POCT device (sample window + colour sticker visible)",
+    "Upload photo (JPG or PNG)",
     type=["jpg", "jpeg", "png"],
 )
 if uploaded is None:
-    st.info("Upload a photo of the front face of the device ")
+    st.info("Upload a photo to get started. See **How to use this app** above for photo tips.")
     st.stop()
 
 file_bytes = uploaded.getvalue()
@@ -120,7 +113,8 @@ pil_disp  = Image.fromarray(bgr_to_rgb(img_bgr)).resize((DISPLAY_W, display_h), 
 # STEP 2 — Confirm detection
 # ══════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("###  Step 2 — Confirm detection")
+st.markdown("### 🔍  Step 2 — Confirm detection")
+st.caption("Drag the **green box** over the sample window and the **cyan box** over the colour sticker. Drag corners to resize.")
 
 # ── Detect sticker first; predict window from physical geometry ────────────────
 sticker_rect_detected = detect_sticker_rect(img_bgr)
@@ -136,20 +130,19 @@ else:
     if auto_rect is None:
         auto_rect = (img_w // 4, img_h // 4, img_w // 2, img_h // 4)
 
-# ── Window cropper (collapsed by default — user expands to adjust) ─────────────
-with st.expander("Adjust sample window", expanded=False):
-    st.caption("Drag the **green box** to cover the sample window.")
+# ── Window cropper (always visible) ───────────────────────────────────────────
+st.caption("Drag the **green box** so it fully covers the sample window. Drag the corners to resize.")
 
-    def _win_box_algo(_img=None, **_) -> dict:
-        ax, ay, aw, ah = auto_rect
-        return {"left": int(ax*scale), "top": int(ay*scale),
-                "width": int(aw*scale), "height": int(ah*scale)}
+def _win_box_algo(_img=None, **_) -> dict:
+    ax, ay, aw, ah = auto_rect
+    return {"left": int(ax*scale), "top": int(ay*scale),
+            "width": int(aw*scale), "height": int(ah*scale)}
 
-    box = st_cropper(
-        pil_disp, realtime_update=True, box_color="#00e676", aspect_ratio=None,
-        return_type="box", box_algorithm=_win_box_algo,
-        should_resize_image=False, stroke_width=2, key="roi_cropper",
-    )
+box = st_cropper(
+    pil_disp, realtime_update=True, box_color="#00e676", aspect_ratio=None,
+    return_type="box", box_algorithm=_win_box_algo,
+    should_resize_image=False, stroke_width=2, key="roi_cropper",
+)
 
 window_rect: tuple[int, int, int, int] = (
     max(0, int(box["left"]   / scale)),
@@ -192,17 +185,19 @@ for prect, known in zip(patch_rects, known_rgbs):
         sticker_ok = False
         break
 
-MAX_DE_FOR_CORRECTION = 60.0
 correction_matrix = None
 mean_err  = None
 residual  = None
 img_corrected = img_bgr
 
+CORRECTION_STRENGTH = 0.4  # 0 = no correction, 1 = full correction
+
 if sticker_ok and len(observed_rgbs) == 6:
     mean_err = float(np.mean(patch_errors))
-    if mean_err <= MAX_DE_FOR_CORRECTION:
-        correction_matrix, residual = compute_correction_matrix(observed_rgbs, known_rgbs)
-        img_corrected = apply_correction(img_bgr, correction_matrix)
+    correction_matrix, residual = compute_correction_matrix(observed_rgbs, known_rgbs)
+    img_fully_corrected = apply_correction(img_bgr, correction_matrix)
+    img_corrected = cv2.addWeighted(img_bgr, 1 - CORRECTION_STRENGTH,
+                                    img_fully_corrected, CORRECTION_STRENGTH, 0)
 
 # ── Build overlay image ────────────────────────────────────────────────────────
 overlay = img_bgr.copy()
@@ -230,16 +225,9 @@ with info_col:
     if correction_matrix is not None:
         src = "manual" if st.session_state.sticker_rect_manual else ("auto" if sticker_rect_detected else "geometry")
         st.success(f"Colour correction active — dE {mean_err:.1f}  ({src})", icon="✅")
-    elif mean_err is not None and mean_err > MAX_DE_FOR_CORRECTION:
-        st.warning(f"Colour correction skipped — dE too high ({mean_err:.0f})", icon="⚠️")
-    else:
-        st.warning("Colour correction unavailable — sticker not found", icon="⚠️")
 
     if st.button("Adjust sticker", use_container_width=True):
         st.session_state.show_colour_ref = not st.session_state.show_colour_ref
-
-    if not sticker_rect_detected:
-        st.caption("Sticker not auto-detected. Use **Adjust sticker** to set it manually.")
 
 # ── Sticker detail / adjustment panel ─────────────────────────────────────────
 if st.session_state.show_colour_ref:
@@ -284,8 +272,8 @@ if st.session_state.show_colour_ref:
             st.caption("Top = target  ·  Bottom = measured")
 
             ma_col, mb_col = st.columns(2)
-            ma_col.metric("Mean dE before", f"{mean_err:.1f}")
-            mb_col.metric("Residual after", f"{residual:.1f}" if residual is not None else "skipped")
+            ma_col.metric("Mean dE before", f"{mean_err:.1f}" if mean_err is not None else "—")
+            mb_col.metric("Residual after", f"{residual:.1f}" if residual is not None else "—")
 
             pa_col, pb_col = st.columns(2)
             pa_col.image(bgr_to_rgb(img_bgr[y1:y2, x1:x2]),
@@ -300,7 +288,8 @@ if st.session_state.show_colour_ref:
 # STEP 3 — Analyze
 # ══════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### Step 3 — Analyze")
+st.markdown("### 🔬  Step 3 — Analyze")
+st.caption("Once the boxes look right, hit **Analyze**. The concentration and screening result will appear below.")
 
 if st.button("Analyze", type="primary", use_container_width=True):
     try:
@@ -325,18 +314,11 @@ if st.button("Analyze", type="primary", use_container_width=True):
         hue_off = float(st.session_state.get("hue_offset", 0.0))
         hue     = raw_hue + hue_off
 
-        # Recompute concentration from offset-adjusted hue
-        ln_conc = (hue - CAL_B) / CAL_M
-        conc    = float(np.exp(ln_conc))
-        above   = conc >= THRESHOLD_CONC
-        in_range = 280 <= hue <= 302
-
-        if conc < 0.001:
-            conc_str = f"{conc:.3e}"
-        elif conc < 1000:
-            conc_str = f"{conc:.2f}"
-        else:
-            conc_str = f"{conc:.3e}"
+        conc     = result["concentration_est"]
+        ln_conc  = result["ln_concentration_est"]
+        above    = result.get("above_threshold", conc >= THRESHOLD_CONC)
+        in_range = 260.0 <= hue <= 360.0
+        conc_str = f"{conc:.4f}"
 
         # ── Result card: overlay image | verdict ──────────────────────────────
         st.divider()
@@ -347,18 +329,19 @@ if st.button("Analyze", type="primary", use_container_width=True):
                      caption="corrected" if result.get("color_corrected") else "uncorrected")
 
         with r_res_col:
-            if not in_range:
-                st.warning("# ⚠️ Out of range\nHue outside calibration range (280–302°)")
-            elif above:
+            if above:
                 st.error("# 🔴 ALZHEIMER\n## POSITIVE")
             else:
                 st.success("# 🟢 ALZHEIMER\n## NEGATIVE")
 
             st.metric("Lactoferrin concentration", f"{conc_str} µg/mL")
-            st.caption(
+            _caption = (
                 f"Threshold: **{THRESHOLD_CONC:.2f} µg/mL**  ·  Hue: {hue:.1f}°"
                 + (f"  ·  offset {hue_off:+.1f}°" if hue_off != 0.0 else "")
             )
+            if not in_range:
+                _caption += "  ·  ⚠️ extrapolated (validated range: 280–302°)"
+            st.caption(_caption)
 
         # ── Technical details ─────────────────────────────────────────────────
         with st.expander("Technical details"):

@@ -45,14 +45,14 @@ class RefPatch:
 # from the detected sticker rect at runtime.
 DEFAULT_PATCHES: list[RefPatch] = [
     # ── neutral ────────────────────────────────────────────────────────────
-    # Known RGB = design values from generate_sticker.py (digital standard)
-    RefPatch("White",        (235, 235, 235), (0, 0, 40, 40)),
-    RefPatch("Mid Gray",     (128, 128, 128), (0, 0, 40, 40)),
-    RefPatch("Black",        ( 25,  25,  25), (0, 0, 40, 40)),
+    # Known RGB = measured from actual printed sticker under standard lighting
+    RefPatch("White",        (136, 136, 140), (0, 0, 40, 40)),
+    RefPatch("Mid Gray",     ( 59,  59,  65), (0, 0, 40, 40)),
+    RefPatch("Black",        (  4,   5,   8), (0, 0, 40, 40)),
     # ── chromatic (assay hue range 280-302 deg) ───────────────────────────
-    RefPatch("Hue 302 low",  (209,  73, 205), (0, 0, 40, 40)),  # low  conc
-    RefPatch("Hue 291 mid",  (189,  73, 209), (0, 0, 40, 40)),  # mid  conc
-    RefPatch("Hue 280 high", (164,  73, 209), (0, 0, 40, 40)),  # high conc
+    RefPatch("Hue 302 low",  ( 76,  30,  71), (0, 0, 40, 40)),  # low  conc
+    RefPatch("Hue 291 mid",  ( 67,  25,  69), (0, 0, 40, 40)),  # mid  conc
+    RefPatch("Hue 280 high", ( 57,  28,  72), (0, 0, 40, 40)),  # high conc
 ]
 
 
